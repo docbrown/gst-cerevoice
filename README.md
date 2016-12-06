@@ -10,7 +10,8 @@ cannot provide support for this plugin!
 
 * GNU Make
 * pkg-config
-* GStreamer 1.0
+* GStreamer 1.8+
+* Glib 2.44+
 * CereVoice SDK
 
 ## Building
