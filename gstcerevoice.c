@@ -37,19 +37,10 @@ static gboolean init_global_engine() {
 GST_DEBUG_CATEGORY_STATIC(gst_cerevoice_debug);
 #define GST_CAT_DEFAULT gst_cerevoice_debug
 
-#define GST_TYPE_CEREVOICE (gst_cerevoice_get_type())
-#define GST_CEREVOICE(o) \
-    (G_TYPE_CHECK_INSTANCE_CAST((o), GST_TYPE_CEREVOICE, GstCereVoice))
-#define GST_CEREVOICE_CLASS(k) \
-    (G_TYPE_CHECK_CLASS((k), GST_TYPE_CEREVOICE, GstCereVoiceClass))
-#define GST_IS_CEREVOICE(o) \
-    (G_TYPE_CHECK_INSTANCE_TYPE((o), GST_TYPE_CEREVOICE))
-#define GST_IS_CEREVOICE_CLASS(k) \
-    (G_TYPE_CHECK_CLASS_TYPE((k), GST_TYPE_CEREVOICE))
-#define GST_CEREVOICE_GET_CLASS(o) \
-    (G_TYPE_INSTANCE_GET_CLASS((o), GST_TYPE_CEREVOICE, GstCereVoiceClass))
+#define GST_TYPE_CEREVOICE gst_cerevoice_get_type()
+G_DECLARE_FINAL_TYPE(GstCereVoice, gst_cerevoice, GST, CEREVOICE, GstElement)
 
-typedef struct {
+struct _GstCereVoice {
     GstElement             parent;
     GstPad                *sinkpad;
     GstPad                *srcpad;
@@ -60,11 +51,11 @@ typedef struct {
     CPRCEN_channel_handle  chan;
     int                    rate;
     GstClockTime           pts;
-} GstCereVoice;
+};
 
-typedef struct {
+struct _GstCereVoiceClass {
     GstElementClass parent_class;
-} GstCereVoiceClass;
+};
 
 G_DEFINE_TYPE(GstCereVoice, gst_cerevoice, GST_TYPE_ELEMENT);
 
@@ -73,11 +64,8 @@ enum {
     PROP_VOICE_NAME,
     PROP_VOICE_FILE,
     PROP_LICENSE_FILE,
-    PROP_CONFIG_FILE,
-    N_PROPERTIES
+    PROP_CONFIG_FILE
 };
-
-static GParamSpec *properties[N_PROPERTIES] = { NULL };
 
 static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE(
     "sink", GST_PAD_SINK, GST_PAD_ALWAYS,
@@ -306,11 +294,10 @@ static gboolean sink_event(GstPad *pad, GstObject *parent, GstEvent *event) {
     gboolean ret = TRUE;
 
     switch (GST_EVENT_TYPE(event)) {
-    case GST_EVENT_SEGMENT: {
+    case GST_EVENT_SEGMENT:
         /* We'll send our own segment event, so drop this one */
         gst_event_unref(event);
         break;
-    }
     case GST_EVENT_EOS:
         CPRCEN_engine_channel_speak(global_engine, self->chan, "", 0, 1);
         /* fallthrough */
@@ -329,19 +316,18 @@ static void gst_cerevoice_class_init(GstCereVoiceClass *klass) {
     gobject_class->set_property = set_property;
     gobject_class->get_property = get_property;
     
-    properties[PROP_VOICE_NAME] = g_param_spec_string(
-        "voice-name", "Voice name", "Set/Get voice name", "",
-        G_PARAM_READWRITE);
-    properties[PROP_VOICE_FILE] = g_param_spec_string(
-        "voice-file", "Voice file", "Set/Get voice file", "",
-        G_PARAM_READWRITE);
-    properties[PROP_LICENSE_FILE] = g_param_spec_string(
-        "license-file", "License file", "Set/Get license file", "",
-        G_PARAM_READWRITE);
-    properties[PROP_CONFIG_FILE] = g_param_spec_string(
-        "config-file", "Configuration file", "Set/Get configuration file", "",
-        G_PARAM_READWRITE);
-    g_object_class_install_properties(gobject_class, N_PROPERTIES, properties);
+    g_object_class_install_property(gobject_class, PROP_VOICE_NAME,
+    	g_param_spec_string("voice-name", "Voice name",
+    		"Set/Get voice name", "", G_PARAM_READWRITE));
+    g_object_class_install_property(gobject_class, PROP_VOICE_FILE,
+    	g_param_spec_string("voice-file", "Voice file",
+    		"Set/Get voice file", "", G_PARAM_READWRITE));
+    g_object_class_install_property(gobject_class, PROP_LICENSE_FILE,
+    	g_param_spec_string("license-file", "License file",
+    		"Set/Get license file", "", G_PARAM_READWRITE));
+    g_object_class_install_property(gobject_class, PROP_CONFIG_FILE,
+    	g_param_spec_string("config-file", "Configuration file",
+    		"Set/Get configuration file", "", G_PARAM_READWRITE));
     
     element_class->change_state = change_state;
     
@@ -351,10 +337,8 @@ static void gst_cerevoice_class_init(GstCereVoiceClass *klass) {
         "Converts plain text and SSML to audio",
         "David Brown <cypher543@gmail.com>");
     
-    gst_element_class_add_pad_template(element_class,
-        gst_static_pad_template_get(&sink_factory));
-    gst_element_class_add_pad_template(element_class,
-        gst_static_pad_template_get(&src_factory));
+    gst_element_class_add_static_pad_template(element_class, &sink_factory);
+    gst_element_class_add_static_pad_template(element_class, &src_factory);
 }
 
 static void gst_cerevoice_init(GstCereVoice *self) {
@@ -376,13 +360,14 @@ static gboolean plugin_init(GstPlugin *plugin) {
 }
 
 GST_PLUGIN_DEFINE(
-    GST_VERSION_MAJOR, GST_VERSION_MINOR,
+    GST_VERSION_MAJOR,
+    GST_VERSION_MINOR,
     cerevoice,
     "CereVoice Text-to-Speech Plugin",
     plugin_init,
     "0.1",
     "LGPL",
     "David Brown",
-    "http://github.com/docbrown/gstcerevoice"
+    "http://github.com/docbrown/gst-cerevoice"
 )
 
