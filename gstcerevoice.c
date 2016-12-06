@@ -50,7 +50,6 @@ struct _GstCereVoice {
     gchar                 *config_file;
     CPRCEN_channel_handle  chan;
     int                    rate;
-    GstClockTime           pts;
 };
 
 struct _GstCereVoiceClass {
@@ -86,8 +85,6 @@ static void callback(CPRC_abuf *abuf, void *userdata) {
     int samples = CPRC_abuf_wav_sz(abuf);
     int start = MAX(CPRC_abuf_wav_mk(abuf), 0);
     int end = MAX(CPRC_abuf_wav_done(abuf), 0);
-    GstClockTime duration =
-        gst_util_uint64_scale_int(samples, GST_SECOND, self->rate);
     gsize size = (end - start) * sizeof(*data);
     
     GST_LOG_OBJECT(self, "got audio buffer, %d samples "
@@ -95,14 +92,9 @@ static void callback(CPRC_abuf *abuf, void *userdata) {
         samples, start, end, end - start);
 
     out = gst_buffer_new_allocate(NULL, size, NULL);
-    GST_BUFFER_PTS(out) = self->pts;
-    GST_BUFFER_DURATION(out) = duration;
+    GST_BUFFER_TIMESTAMP(out) = GST_CLOCK_TIME_NONE;
     gst_buffer_fill(out, 0, data + start, size);
     gst_pad_push(self->srcpad, out);
-    
-    GST_LOG_OBJECT(self, "pushed buffer (dur %" GST_TIME_FORMAT ", ts %" GST_TIME_FORMAT ")", GST_TIME_ARGS(duration), GST_TIME_ARGS(self->pts));
-    
-    self->pts += duration;
 }
 
 static gboolean open_channel(GstCereVoice *self) {
