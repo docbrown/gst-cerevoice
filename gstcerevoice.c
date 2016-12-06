@@ -50,6 +50,7 @@ struct _GstCereVoice {
     gchar                 *config_file;
     CPRCEN_channel_handle  chan;
     int                    rate;
+    GstEvent              *segment_event;
 };
 
 struct _GstCereVoiceClass {
@@ -88,8 +89,8 @@ static void callback(CPRC_abuf *abuf, void *userdata) {
     gsize size = (end - start) * sizeof(*data);
     
     GST_LOG_OBJECT(self, "got audio buffer, %d samples "
-        "(safe region: %d-%d, %d samples)",
-        samples, start, end, end - start);
+        "(safe region: %d-%d, %d samples, %lu bytes)",
+        samples, start, end, end - start, size);
 
     out = gst_buffer_new_allocate(NULL, size, NULL);
     GST_BUFFER_TIMESTAMP(out) = GST_CLOCK_TIME_NONE;
@@ -251,7 +252,6 @@ static GstFlowReturn chain(GstPad *pad, GstObject *parent, GstBuffer *buf) {
     
     if (!gst_pad_has_current_caps(self->srcpad)) {
         GstCaps *caps;
-        GstSegment segment;
         
         GST_DEBUG_OBJECT(self, "negotiating sample rate to %d Hz", self->rate);
         
@@ -263,14 +263,18 @@ static GstFlowReturn chain(GstPad *pad, GstObject *parent, GstBuffer *buf) {
         gst_pad_push_event(self->srcpad, gst_event_new_caps(caps));
         gst_caps_unref(caps);
         
-        gst_segment_init(&segment, GST_FORMAT_TIME);
-        gst_pad_push_event(self->srcpad, gst_event_new_segment(&segment));
+        /* Now that caps have been negotiated, we can go ahead and push a
+           pending segment event, if we have one. */
+		if (self->segment_event) {
+			gst_pad_push_event(self->srcpad, self->segment_event);
+			self->segment_event = NULL;
+		}
     }
     
     gst_buffer_map(buf, &info, GST_MAP_READ);
     
     if (!CPRCEN_engine_channel_speak(
-            global_engine, self->chan, (const char *)info.data, info.size, 0))
+            global_engine, self->chan, (const char *)info.data, info.size, 1))
     {
         GST_ERROR_OBJECT(self, "failed to speak text buffer");
         ret = GST_FLOW_ERROR;
@@ -287,12 +291,17 @@ static gboolean sink_event(GstPad *pad, GstObject *parent, GstEvent *event) {
 
     switch (GST_EVENT_TYPE(event)) {
     case GST_EVENT_SEGMENT:
-        /* We'll send our own segment event, so drop this one */
-        gst_event_unref(event);
-        break;
-    case GST_EVENT_EOS:
-        CPRCEN_engine_channel_speak(global_engine, self->chan, "", 0, 1);
-        /* fallthrough */
+        /* Segment events should only be forwarded after caps negotiation. */
+		if (gst_pad_has_current_caps(self->srcpad)) {
+			/* Source pad has caps, so pass the event on through. */
+			ret = gst_pad_event_default(pad, parent, event);
+		} else {
+			/* Caps haven't been negotiated, so just save the segment event. It
+			   will be sent by the source pad chain function. */
+			gst_event_replace(&self->segment_event, event);
+			gst_event_unref(event);
+		}
+		break;
     default:
         ret = gst_pad_event_default(pad, parent, event);
         break;
