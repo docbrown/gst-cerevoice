@@ -1,0 +1,2 @@
+option('cerevoice_sdk', type : 'string', value : '/opt/cerevoice_sdk')
+option('cerevoice_shared', type : 'boolean', value : true)

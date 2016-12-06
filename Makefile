@@ -16,7 +16,7 @@ CEREVOICE_LIB_DIRS += $(CEREVOICE_SDK)/cerehts/lib
 
 PLUGIN   = gstcerevoice
 PKGS     = gstreamer-1.0 gstreamer-audio-1.0
-CFLAGS   = -Wall -Werror -DPACKAGE=\"$(PLUGIN)\"
+CFLAGS   = -Wall -Werror
 CFLAGS  += -I$(CEREVOICE_SDK)/cerevoice_eng/include
 CFLAGS  += $(shell pkg-config $(PKGS) --cflags)
 LDFLAGS  = -shared -fPIC

@@ -359,6 +359,7 @@ static gboolean plugin_init(GstPlugin *plugin) {
         "cerevoice", GST_RANK_NONE, GST_TYPE_CEREVOICE);
 }
 
+#define PACKAGE "gstcerevoice"
 GST_PLUGIN_DEFINE(
     GST_VERSION_MAJOR,
     GST_VERSION_MINOR,

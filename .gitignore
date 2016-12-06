@@ -2,3 +2,4 @@
 *.lic
 *.so
 *.a
+build/
