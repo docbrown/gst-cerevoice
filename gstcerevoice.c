@@ -51,6 +51,7 @@ struct _GstCereVoice {
   CPRCEN_channel_handle  chan;
   int                    rate;
   GstEvent              *segment_event;
+  GstFlowReturn          ret;
 };
 
 struct _GstCereVoiceClass {
@@ -79,6 +80,39 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE(
     "layout=(string)interleaved")
 );
 
+static gboolean
+gst_cerevoice_set_sample_rate(GstCereVoice *self, int rate)
+{
+  GstCaps *caps;
+  
+  if (self->rate == rate)
+    return TRUE;
+    
+  GST_DEBUG_OBJECT(self, "negotiating sample rate to %d Hz", rate);
+  
+  caps = gst_caps_new_simple("audio/x-raw",
+    "format", G_TYPE_STRING, GST_AUDIO_NE(S16),
+    "channels", G_TYPE_INT, 1,
+    "rate", G_TYPE_INT, rate,
+    "layout", G_TYPE_STRING, "interleaved", NULL);
+    
+  if (!gst_pad_set_caps(self->srcpad, caps)) {
+    GST_ELEMENT_ERROR(self, CORE, NEGOTIATION, (NULL), (NULL));
+    return FALSE;
+  }
+  
+  /* Now that caps have been negotiated, we can go ahead and push a
+     pending segment event, if we have one. */
+  if (self->segment_event) {
+    gst_pad_push_event(self->srcpad, self->segment_event);
+    self->segment_event = NULL;
+  }
+  
+  self->rate = rate;
+  
+  return TRUE;
+}
+
 static void
 gst_cerevoice_callback(CPRC_abuf *abuf, void *userdata)
 {
@@ -88,11 +122,20 @@ gst_cerevoice_callback(CPRC_abuf *abuf, void *userdata)
   int samples = CPRC_abuf_wav_sz(abuf);
   int start = MAX(CPRC_abuf_wav_mk(abuf), 0);
   int end = MAX(CPRC_abuf_wav_done(abuf), 0);
+  int rate = CPRC_abuf_wav_srate(abuf);
   gsize size = (end - start) * sizeof(*data);
   
-  GST_LOG_OBJECT(self, "got audio buffer, %d samples "
-    "(safe region: %d-%d, %d samples, %lu bytes)",
-    samples, start, end, end - start, size);
+  GST_LOG_OBJECT(self, "got %d Hz audio buffer, %d samples "
+    "(safe region: %d-%d, %d samples, %" G_GSIZE_FORMAT " bytes)",
+    rate, samples, start, end, end - start, size);
+
+  /* Handle sample rate changes that may occur if the <voice> SSML element is
+     used. This also sets the src caps before the first buffer is pushed. */
+  if (!gst_cerevoice_set_sample_rate(self, rate)) {
+    self->ret = GST_FLOW_ERROR;
+    CPRCEN_engine_channel_reset(global_engine, self->chan);
+    return;
+  }
 
   out = gst_buffer_new_allocate(NULL, size, NULL);
   GST_BUFFER_TIMESTAMP(out) = GST_CLOCK_TIME_NONE;
@@ -105,7 +148,7 @@ gst_cerevoice_open_channel(GstCereVoice *self)
 {
   gboolean ret = TRUE;
   CPRCEN_channel_handle chan = 0;
-  int rate;
+  //int rate;
 
   if (self->voice_file) {
     /* Acquire a lock to ensure other threads can't load a voice until we've
@@ -144,16 +187,8 @@ gst_cerevoice_open_channel(GstCereVoice *self)
     goto fail;
   }
   
-  rate = atoi(CPRCEN_channel_get_voice_info(
-      global_engine, chan, "SAMPLE_RATE"));
-  if (rate == 0) {
-    GST_ELEMENT_ERROR(GST_ELEMENT(self), LIBRARY, FAILED,
-      ("Failed to get voice sample rate."), (NULL));
-    goto fail;
-  }
-  
   self->chan = chan;
-  self->rate = rate;
+  self->rate = 0;
   goto cleanup;
 
 fail:
@@ -259,34 +294,12 @@ static GstFlowReturn
 gst_cerevoice_chain(GstPad *pad, GstObject *parent, GstBuffer *buf)
 {
   GstCereVoice *self = GST_CEREVOICE(parent);
-  GstFlowReturn ret = GST_FLOW_OK;
   GstMapInfo info;
+  
+  self->ret = GST_FLOW_OK;
   
   GST_LOG_OBJECT(self, "got text buffer, %" G_GSIZE_FORMAT " bytes",
     gst_buffer_get_size(buf));
-  
-  if (!gst_pad_has_current_caps(self->srcpad)) {
-    GstCaps *caps;
-    
-    GST_DEBUG_OBJECT(self, "negotiating sample rate to %d Hz", self->rate);
-    
-    caps = gst_caps_new_simple("audio/x-raw",
-      "format", G_TYPE_STRING, GST_AUDIO_NE(S16),
-      "channels", G_TYPE_INT, 1,
-      "rate", G_TYPE_INT, self->rate,
-      "layout", G_TYPE_STRING, "interleaved", NULL);
-    if (!gst_pad_set_caps(self->srcpad, caps)) {
-      GST_ELEMENT_ERROR(self, CORE, NEGOTIATION, (NULL), (NULL));
-      goto failed;
-    }
-    
-    /* Now that caps have been negotiated, we can go ahead and push a
-       pending segment event, if we have one. */
-    if (self->segment_event) {
-      gst_pad_push_event(self->srcpad, self->segment_event);
-      self->segment_event = NULL;
-    }
-  }
   
   gst_buffer_map(buf, &info, GST_MAP_READ);
   
@@ -294,13 +307,13 @@ gst_cerevoice_chain(GstPad *pad, GstObject *parent, GstBuffer *buf)
       global_engine, self->chan, (const char *)info.data, info.size, 1))
   {
     GST_ERROR_OBJECT(self, "failed to speak text buffer");
-    ret = GST_FLOW_ERROR;
+    self->ret = GST_FLOW_ERROR;
   }
  
-failed:
   gst_buffer_unmap(buf, &info);
   gst_buffer_unref(buf);
-  return ret;
+  
+  return self->ret;
 }
 
 static gboolean
