@@ -275,8 +275,10 @@ gst_cerevoice_chain(GstPad *pad, GstObject *parent, GstBuffer *buf)
       "channels", G_TYPE_INT, 1,
       "rate", G_TYPE_INT, self->rate,
       "layout", G_TYPE_STRING, "interleaved", NULL);
-    gst_pad_push_event(self->srcpad, gst_event_new_caps(caps));
-    gst_caps_unref(caps);
+    if (!gst_pad_set_caps(self->srcpad, caps)) {
+      GST_ELEMENT_ERROR(self, CORE, NEGOTIATION, (NULL), (NULL));
+      goto failed;
+    }
     
     /* Now that caps have been negotiated, we can go ahead and push a
        pending segment event, if we have one. */
@@ -294,7 +296,8 @@ gst_cerevoice_chain(GstPad *pad, GstObject *parent, GstBuffer *buf)
     GST_ERROR_OBJECT(self, "failed to speak text buffer");
     ret = GST_FLOW_ERROR;
   }
-  
+ 
+failed:
   gst_buffer_unmap(buf, &info);
   gst_buffer_unref(buf);
   return ret;
