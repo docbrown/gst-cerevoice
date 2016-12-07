@@ -28,7 +28,7 @@ static gboolean init_global_engine() {
   if (g_once_init_enter(&global_engine)) {
     CPRCEN_engine *e = CPRCEN_engine_new();
     if (!e)
-    ret = FALSE;
+	    ret = FALSE;
     g_once_init_leave(&global_engine, e);
   }
   return ret;
@@ -148,7 +148,6 @@ gst_cerevoice_open_channel(GstCereVoice *self)
 {
   gboolean ret = TRUE;
   CPRCEN_channel_handle chan = 0;
-  //int rate;
 
   if (self->voice_file) {
     /* Acquire a lock to ensure other threads can't load a voice until we've
@@ -330,7 +329,7 @@ gst_cerevoice_sink_event(GstPad *pad, GstObject *parent, GstEvent *event)
       ret = gst_pad_event_default(pad, parent, event);
     } else {
       /* Caps haven't been negotiated, so just save the segment event. It
-         will be sent by the source pad chain function. */
+         will be sent by the sink pad chain function. */
       gst_event_replace(&self->segment_event, event);
       gst_event_unref(event);
     }
