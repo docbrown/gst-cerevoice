@@ -28,7 +28,7 @@ static gboolean init_global_engine() {
   if (g_once_init_enter(&global_engine)) {
     CPRCEN_engine *e = CPRCEN_engine_new();
     if (!e)
-	    ret = FALSE;
+      ret = FALSE;
     g_once_init_leave(&global_engine, e);
   }
   return ret;
